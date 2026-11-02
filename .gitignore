@@ -1,0 +1,21 @@
+# Local toolchain and build outputs (regenerable, see README "重新构建")
+toolchain/
+build/
+dist/
+
+# Generated runtime payload and native libs (produced by scripts/build_payload.py)
+android/app/src/*/assets/runtime/
+android/app/src/*/jniLibs/
+
+# Android / Gradle local state
+android/.gradle/
+android/app/build/
+android/build/
+android/local.properties
+android/keystore.properties
+*.jks
+*.keystore
+
+# Secrets
+.env
+*.env.local

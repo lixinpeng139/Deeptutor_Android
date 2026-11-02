@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">DeepTutor</string>
+    <string name="splash_title">DeepTutor · AI 老师</string>
+    <string name="state_checking">正在检查运行环境…</string>
+    <string name="state_installing">首次启动：正在解压内置运行环境 %1$d%%\n（只需一次，约 1–3 分钟）</string>
+    <string name="state_starting">正在启动本地后端服务… %1$ds</string>
+    <string name="state_starting_hint">首次启动较慢，请保持应用在前台</string>
+    <string name="state_failed">启动失败</string>
+    <string name="retry">重试</string>
+    <string name="copy_log">复制日志</string>
+    <string name="reinstall">重新解压运行环境</string>
+    <string name="log_copied">日志已复制到剪贴板</string>
+    <string name="channel_name">后台服务</string>
+    <string name="notif_running">DeepTutor 本地服务运行中</string>
+    <string name="notif_starting">DeepTutor 正在启动…</string>
+    <string name="notif_stop">退出</string>
+    <string name="download_saved">已保存到 下载/%1$s</string>
+    <string name="download_failed">下载失败：%1$s</string>
+    <string name="exit_confirm">再按一次返回键退出</string>
+    <string name="menu_restart">重启服务</string>
+    <string name="link_open">在浏览器中打开</string>
+    <string name="link_copy">复制链接</string>
+    <string name="link_copied">链接已复制</string>
+</resources>

@@ -1,0 +1,922 @@
+diff --git a/web/app/layout.tsx b/web/app/layout.tsx
+index c266a68..df032e3 100644
+--- a/web/app/layout.tsx
++++ b/web/app/layout.tsx
+@@ -3,8 +3,11 @@ import { Geist, Lora } from "next/font/google";
+ import "./globals.css";
+ import "@/features/ui-layout/classic/classic.css";
+ import "@/features/ui-layout/modern/modern.css";
++// Last, so touch sizing wins over component styles on touch devices only.
++import "./touch.css";
+ import ThemeScript from "@/components/ThemeScript";
+ import ToastViewport from "@/components/common/ToastViewport";
++import AndroidBackBridge from "@/components/common/AndroidBackBridge";
+ import MotionProvider from "@/components/common/MotionProvider";
+ import SettingsReturnTracker from "@/components/settings/SettingsReturnTracker";
+ import { WorkspaceNavigation } from "@/components/workspaces/WorkspaceNavigation";
+@@ -65,6 +68,7 @@ export default function RootLayout({
+             <I18nClientBridge>{children}</I18nClientBridge>
+           </MotionProvider>
+           <ToastViewport />
++          <AndroidBackBridge />
+         </AppShellProvider>
+       </body>
+     </html>
+diff --git a/web/app/touch.css b/web/app/touch.css
+new file mode 100644
+index 0000000..3f631d4
+--- /dev/null
++++ b/web/app/touch.css
+@@ -0,0 +1,262 @@
++/*
++ * Touch adaptation layer.
++ *
++ * The UI was laid out for a mouse: 24–36px controls, actions that appear on
++ * hover, and drag handles a few pixels wide. Everything here is scoped to
++ * `(hover: none) and (pointer: coarse)` — a device whose *primary* input is a
++ * finger — so desktop and touchscreen laptops with a trackpad are untouched.
++ *
++ * Principles (Material / Apple HIG):
++ *   - every control has a hit area of at least 44×44 CSS px, grown with an
++ *     invisible ::after so the visual design and layout do not change;
++ *   - nothing is reachable only by hovering: hover-revealed actions are shown;
++ *   - hover styles never stick after a tap; :active gives immediate feedback;
++ *   - drag handles claim the gesture (`touch-action: none`) and are wider;
++ *   - text inputs use 16px so focusing them never zooms the page.
++ */
++@media (hover: none) and (pointer: coarse) {
++  :root {
++    --dt-touch-target: 44px;
++  }
++
++  html {
++    -webkit-tap-highlight-color: transparent;
++    /* No double-tap-to-zoom delay on taps. */
++    touch-action: manipulation;
++  }
++
++  /* ---- Hit areas ---------------------------------------------------- */
++
++  :is(button, [role="button"], [role="tab"], [role="menuitem"], [role="menuitemradio"],
++    [role="menuitemcheckbox"], [role="option"], [role="switch"], [role="checkbox"],
++    [role="radio"], summary, a[href], label:has(> input[type="checkbox"]),
++    label:has(> input[type="radio"])):not([data-touch-exempt]) {
++    position: relative;
++  }
++
++  /* A centred ::after at least 44×44, but never smaller than the element.
++     It sits under the element's own content, so it only catches taps that
++     would otherwise land just outside a small control. */
++  :is(button, [role="button"], [role="tab"], [role="switch"], [role="checkbox"],
++    [role="radio"], summary):not([data-touch-exempt]):not(:has(> input))::after {
++    content: "";
++    position: absolute;
++    left: 50%;
++    top: 50%;
++    width: max(100%, var(--dt-touch-target));
++    height: max(100%, var(--dt-touch-target));
++    transform: translate(-50%, -50%);
++    border-radius: inherit;
++    background: transparent;
++    pointer-events: auto;
++  }
++  /* The extension has to sit above the next block in the flow (a header
++     button's lower edge otherwise belongs to the content under it). Only
++     non-positioned flow boxes are outranked; overlays keep their z-index. */
++  :is(button, [role="button"], [role="tab"]):not([data-touch-exempt]):not([style*="z-index"]) {
++    z-index: 1;
++  }
++  /* The compact top bar's logo is the way home. */
++  a[href="/"]:has(> img) {
++    min-height: 40px;
++    padding-inline: 4px;
++  }
++  /* Square 32px icon buttons (page bars, calendar, panels) become 40px. */
++  button:is(.h-8.w-8, .size-8) {
++    min-width: 40px;
++    min-height: 40px;
++  }
++
++  /* Menu, list and navigation rows: grow the row itself, they have room. */
++  :is([role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"], [role="option"]) {
++    min-height: var(--dt-touch-target);
++  }
++  nav a[href], aside a[href], [role="navigation"] a[href], [role="tablist"] > * {
++    min-height: 40px;
++  }
++  /* Conversation and record rows in the sidebar (div role=button rows). */
++  :is(nav, aside, [role="navigation"]) div[role="button"] {
++    min-height: 40px;
++  }
++
++  /* Inline links in prose keep their line height; their padding grows instead. */
++  :is(p, li, td, blockquote) > a[href] {
++    padding-block: 4px;
++    margin-block: -4px;
++  }
++
++  /* Component stylesheets (calendar.css …) load per route, after this file;
++     `:root` lifts these overrides above their equal-specificity rules. */
++  /* Icon rows packed 2px apart: grown hit areas would overlap and a tap
++     between two icons would hit the wrong one. Give them room instead.
++     Buttons are often wrapped (tooltips render an inline-flex span). */
++  :is(.gap-0, .gap-px, .gap-0\.5, .gap-1):has(> :is(button, [role="button"], a[href]),
++    > * > :is(button, [role="button"])) {
++    column-gap: 8px;
++  }
++  :root .dt-tray-bar, :root .dt-navigation-actions, :root .dt-cal-toolbar, :root .dt-cal-step {
++    column-gap: 8px;
++  }
++  /* Month cells: the date and the footprint dot share a 30px header in a
++     cell that can be 50px wide. The date keeps its width (it is the bigger
++     target); the header grows taller and the dot takes what is left. */
++  :root .dt-cal-cell-head {
++    height: 40px;
++    padding: 0 3px;
++    min-width: 0;
++    overflow: hidden;
++  }
++  :root .dt-cal-cell-date {
++    height: 32px;
++    min-width: 32px;
++    padding-inline: 4px;
++    flex-shrink: 0;
++    white-space: nowrap;
++  }
++  :root .dt-cal-footprint {
++    height: 32px;
++    min-width: 10px;
++    flex: 0 1 28px;
++  }
++  /* Their neighbours are other days: never reach into the next cell (the
++     header clips them). The footprint dot, later in the row, wins where the
++     two overlap. */
++  :root .dt-cal-cell-date::after {
++    width: max(100%, 40px) !important;
++    height: 40px !important;
++  }
++  :root .dt-cal-footprint::after {
++    width: 100% !important;
++    height: 40px !important;
++  }
++  /* The sidebar's mini month: seven days to a 248px row, 2px apart. Widen
++     the rail a little and make each day a taller cell that tiles, rather
++     than extending into its neighbours. */
++  :root .dt-cal-rail {
++    flex-basis: 280px;
++  }
++  :root .dt-cal-mini-row {
++    gap: 0;
++  }
++  :root .dt-cal-mini-day {
++    height: 36px;
++  }
++  :root .dt-cal-mini-day::after {
++    width: 100% !important;
++    height: 100% !important;
++  }
++  :root .dt-tray-button {
++    height: 36px;
++    padding-inline: 10px;
++  }
++  :root .dt-nav-icon {
++    min-width: 36px;
++    min-height: 36px;
++  }
++
++  /* Native checkboxes and radios are 13px in WebView. */
++  input:is([type="checkbox"], [type="radio"]) {
++    min-width: 22px;
++    min-height: 22px;
++  }
++  input[type="range"] {
++    min-height: var(--dt-touch-target);
++  }
++
++  /* ---- Typing ------------------------------------------------------- */
++
++  /* Anything smaller than 16px makes the WebView zoom into the field. */
++  :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
++    textarea, select, [contenteditable="true"]) {
++    font-size: max(16px, 1em);
++  }
++
++  /* ---- Hover-only content ------------------------------------------- */
++
++  /* Tailwind group-hover reveals (`opacity-0 group-hover:opacity-100`). */
++  .group .opacity-0[class*="group-hover:opacity-100"],
++  .group .opacity-0[class*="group-hover/"][class*="opacity-100"],
++  .opacity-0[class*="sm:group-hover:opacity-100"] {
++    opacity: 1 !important;
++  }
++  .group [class*="group-hover:translate-"],
++  .group [class*="group-hover:translate-y-0"] {
++    transform: none !important;
++  }
++
++  /* The app's own CSS reveals. */
++  :root .dt-account-tabs.is-tucked [role="tab"],
++  :root .dt-lead-token .dt-lead-icon > svg:last-child,
++  :root .dt-starter-row .dt-starter-enter,
++  :root .dt-crumb .dt-crumb-caret {
++    opacity: 1;
++  }
++  /* The sidebar's account tabs fold into one overlapping stack that fans out
++     on hover. Without hover the second tab stays half-covered: keep it open. */
++  :root .dt-account-tabs.is-tucked [role="tab"] {
++    padding: 0 clamp(5px, (100cqi - 180px) / 10, 10px);
++  }
++  :root .dt-account-tabs.is-tucked > :last-child [role="tab"] {
++    margin-left: 0;
++  }
++  :root .dt-account-tabs.is-tucked > :last-child [role="tab"] > svg {
++    transform: none;
++  }
++  :root .dt-category-bar [role="tablist"], :root .dt-account-tabs {
++    column-gap: 2px;
++  }
++  :root .dt-sidebar-header {
++    column-gap: 6px;
++  }
++
++  /* ---- Feedback ----------------------------------------------------- */
++
++  :is(button, [role="button"], [role="menuitem"], [role="option"], [role="tab"], a[href]):not(:disabled):active {
++    filter: brightness(0.94);
++  }
++  .dark :is(button, [role="button"], [role="menuitem"], [role="option"], [role="tab"], a[href]):not(:disabled):active {
++    filter: brightness(1.18);
++  }
++
++  /* ---- Drag handles ------------------------------------------------- */
++
++  /* Panel resizers and grab handles: the browser must not turn the drag
++     into a scroll, and a finger needs more than the 4–8px a cursor gets. */
++  :is(.cursor-col-resize, .cursor-ew-resize, .cursor-row-resize, .cursor-ns-resize,
++    .cursor-grab, [role="separator"][aria-orientation]) {
++    touch-action: none;
++  }
++  /* Handles sit on panel edges, right next to that panel's buttons: grow
++     them a little but stack them under those buttons (which get z-index 1
++     above), so a tap near an edge button still hits the button. */
++  :is(.cursor-col-resize, .cursor-ew-resize, [role="separator"][aria-orientation="vertical"]) {
++    z-index: 0 !important;
++  }
++  :is(.cursor-col-resize, .cursor-ew-resize, [role="separator"][aria-orientation="vertical"])::after {
++    content: "";
++    position: absolute;
++    inset: 0 -6px;
++    z-index: -1;
++  }
++  :is(.cursor-row-resize, .cursor-ns-resize, [role="separator"][aria-orientation="horizontal"])::after {
++    content: "";
++    position: absolute;
++    inset: -6px 0;
++    z-index: -1;
++  }
++
++  /* Native HTML drag sources (calendar, board, file list) start on long press. */
++  [draggable="true"] {
++    -webkit-user-drag: element;
++    -webkit-touch-callout: none;
++  }
++
++  /* ---- Scrolling ---------------------------------------------------- */
++
++  /* Thin scrollbars are pointless under a finger; keep momentum and stop
++     inner scrollers from dragging the whole page when they hit an end. */
++  .overflow-y-auto, .overflow-auto, .overflow-x-auto {
++    -webkit-overflow-scrolling: touch;
++    overscroll-behavior: contain;
++  }
++}
+diff --git a/web/components/chat/home/ChatComposer.module.css b/web/components/chat/home/ChatComposer.module.css
+index cb35dd2..1b363ec 100644
+--- a/web/components/chat/home/ChatComposer.module.css
++++ b/web/components/chat/home/ChatComposer.module.css
+@@ -42,6 +42,18 @@
+   display: none;
+ }
+ 
++/* Under a finger the model, voice and send buttons are the composer's most
++   used targets: give them a full 40px instead of the 32px a cursor needs. */
++@media (hover: none) and (pointer: coarse) {
++  .actions {
++    gap: 8px;
++  }
++  .actions :is(button, [role="button"]) {
++    min-width: 40px;
++    min-height: 40px;
++  }
++}
++
+ @container chat-composer (min-width: 600px) {
+   .toolbar [data-toolbar-label] {
+     display: inline-flex;
+diff --git a/web/components/chat/home/ChatComposer.tsx b/web/components/chat/home/ChatComposer.tsx
+index 0773325..015b0f0 100644
+--- a/web/components/chat/home/ChatComposer.tsx
++++ b/web/components/chat/home/ChatComposer.tsx
+@@ -1473,9 +1473,18 @@ export default memo(function ChatComposer({
+                           return (
+                             <div
+                               className="group/more relative"
+-                              onMouseEnter={() => setMoreCapsOpen(true)}
+-                              onMouseLeave={() => setMoreCapsOpen(false)}
+-                              onFocus={() => setMoreCapsOpen(true)}
++                              // Hover opens it for a mouse only: a tap emits
++                              // emulated mouse and focus events before its
++                              // click, which would open and then toggle shut.
++                              onPointerEnter={(event) => {
++                                if (event.pointerType === "mouse") setMoreCapsOpen(true);
++                              }}
++                              onPointerLeave={(event) => {
++                                if (event.pointerType === "mouse") setMoreCapsOpen(false);
++                              }}
++                              onFocus={(event) => {
++                                if (event.target.matches(":focus-visible")) setMoreCapsOpen(true);
++                              }}
+                               onBlur={(event) => {
+                                 const next = event.relatedTarget;
+                                 if (
+diff --git a/web/components/chat/home/ComposerInput.tsx b/web/components/chat/home/ComposerInput.tsx
+index b78c53c..bc66133 100644
+--- a/web/components/chat/home/ComposerInput.tsx
++++ b/web/components/chat/home/ComposerInput.tsx
+@@ -21,6 +21,7 @@ import { agentGlyph } from "@/components/agents/agent-icons";
+ import { shouldSubmitOnEnter } from "@/lib/composer-keyboard";
+ import { useAutoSizedTextarea } from "@/lib/use-auto-sized-textarea";
+ import { useImeComposing } from "@/lib/use-ime-composing";
++import { useTouchPrimary } from "@/hooks/useTouchPrimary";
+ import { ComposerLead, type LeadToken } from "./ComposerLead";
+ 
+ /** The lead strip overhangs by its tokens' own padding; text starts a gap after it. */
+@@ -249,6 +250,8 @@ export const ComposerInput = memo(
+       inputRef.current = value;
+       setInput(value);
+     }, []);
++    // A finger has no Tab key: the offered completion becomes something to tap.
++    const touchPrimary = useTouchPrimary();
+ 
+     useImperativeHandle(
+       ref,
+@@ -448,7 +451,16 @@ export const ComposerInput = memo(
+           onInputChange(placeholderCompletion);
+           return;
+         }
+-        if (shouldSubmitOnEnter(e, isComposingRef.current)) {
++        if (
++          touchPrimary
++            ? // An on-screen keyboard has no Shift+Enter, so its Enter must
++              // stay the newline key; the send button sends. A hardware
++              // keyboard on a tablet sends with Ctrl/Cmd+Enter.
++              e.key === "Enter" &&
++              (e.ctrlKey || e.metaKey) &&
++              !isComposingRef.current
++            : shouldSubmitOnEnter(e, isComposingRef.current)
++        ) {
+           e.preventDefault();
+           if (!isStreaming) doSend();
+         } else if (e.key === "Escape") {
+@@ -478,6 +490,7 @@ export const ComposerInput = memo(
+         setInputBoth,
+         lead,
+         armed,
++        touchPrimary,
+       ],
+     );
+ 
+@@ -779,7 +792,7 @@ export const ComposerInput = memo(
+             // what's on screen.
+             aria-label={
+               placeholderCompletion
+-                ? `${placeholderCompletion} — ${t("Tab to complete")}`
++                ? `${placeholderCompletion} — ${t(touchPrimary ? "Tap to complete" : "Tab to complete")}`
+                 : undefined
+             }
+             className="w-full resize-none overflow-hidden bg-transparent text-[16px] leading-relaxed text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)]"
+@@ -797,9 +810,28 @@ export const ComposerInput = memo(
+               <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
+                 {placeholderCompletion}
+               </span>
+-              <span className="shrink-0 whitespace-nowrap">
+-                → {t("Tab to complete")}
+-              </span>
++              {touchPrimary ? (
++                // The only live part of the overlay: tapping the textarea
++                // behind it still just focuses it for typing.
++                <button
++                  type="button"
++                  tabIndex={-1}
++                  onPointerDown={(event) => event.preventDefault()}
++                  onClick={() => {
++                    if (!placeholderCompletion) return;
++                    setInputBoth(placeholderCompletion);
++                    onInputChange(placeholderCompletion);
++                    textareaRef.current?.focus();
++                  }}
++                  className="pointer-events-auto -my-1 shrink-0 whitespace-nowrap rounded-full border border-[var(--border)] px-2.5 py-1 text-[13px] text-[var(--foreground)] active:bg-[var(--muted)]"
++                >
++                  {t("Tap to complete")}
++                </button>
++              ) : (
++                <span className="shrink-0 whitespace-nowrap">
++                  → {t("Tab to complete")}
++                </span>
++              )}
+             </div>
+           ) : null}
+           {lead.length > 0 && (
+diff --git a/web/components/common/AndroidBackBridge.tsx b/web/components/common/AndroidBackBridge.tsx
+new file mode 100644
+index 0000000..9a3c8aa
+--- /dev/null
++++ b/web/components/common/AndroidBackBridge.tsx
+@@ -0,0 +1,98 @@
++"use client";
++
++import { useEffect } from "react";
++
++/**
++ * Back on Android (system button or edge gesture) should first close
++ * whatever is open on top of the page, exactly like Escape does on desktop.
++ *
++ * The Android shell calls ``window.__deeptutorBack()``, which resolves to
++ * ``true`` when the page consumed Back; otherwise the shell falls back to
++ * history / leaving the app. Every menu, popover and dialog here already
++ * closes on Escape, so this delivers an Escape to the open layer rather than
++ * teaching each one about Back separately.
++ */
++const OPEN_LAYER = [
++  "[role='dialog']",
++  "[role='alertdialog']",
++  "[aria-modal='true']",
++  "[role='menu']",
++  "[role='listbox']",
++].join(",");
++
++function openLayers(): Element[] {
++  return Array.from(document.querySelectorAll(OPEN_LAYER)).filter((element) => {
++    // Panels park off-screen (translated away, aria-hidden, inert) rather
++    // than unmount; only a layer the user can actually see and touch counts.
++    if (element.closest("[aria-hidden='true'], [inert]")) return false;
++    const rect = element.getBoundingClientRect();
++    if (rect.width === 0 || rect.height === 0) return false;
++    if (rect.right <= 0 || rect.bottom <= 0 || rect.left >= innerWidth || rect.top >= innerHeight) return false;
++    const style = getComputedStyle(element);
++    return (
++      style.visibility !== "hidden" &&
++      style.display !== "none" &&
++      style.pointerEvents !== "none" &&
++      Number(style.opacity) > 0
++    );
++  });
++}
++
++function nextFrame(): Promise<void> {
++  return new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
++}
++
++/** Gone, or on its way out: most layers fade or slide for ~200ms after closing. */
++async function leaving(layer: Element): Promise<boolean> {
++  const before = Number(getComputedStyle(layer).opacity);
++  for (let frame = 0; frame < 6; frame++) {
++    await nextFrame();
++    if (!layer.isConnected || !openLayers().includes(layer)) return true;
++    if (Number(getComputedStyle(layer).opacity) < before - 0.05) return true;
++  }
++  return false;
++}
++
++async function back(): Promise<boolean> {
++  const selection = window.getSelection();
++  if (selection && !selection.isCollapsed) {
++    selection.removeAllRanges();
++    return true;
++  }
++  const layers = openLayers();
++  if (layers.length === 0) {
++    // The overlay navigation drawer closes by tapping its scrim.
++    const scrim = document.querySelector<HTMLElement>("[data-android-back='close-drawer']");
++    if (!scrim) return false;
++    scrim.click();
++    return true;
++  }
++  const top = layers[layers.length - 1];
++  const active = document.activeElement;
++  // Escape where the layer listens: its focused control if it has one,
++  // otherwise the layer itself (bubbling reaches window/document handlers).
++  const target = active instanceof HTMLElement && top.contains(active) ? active : top;
++  const init: KeyboardEventInit = {
++    key: "Escape", code: "Escape", keyCode: 27, bubbles: true, cancelable: true, composed: true,
++  };
++  target.dispatchEvent(new KeyboardEvent("keydown", init));
++  target.dispatchEvent(new KeyboardEvent("keyup", init));
++  // If the layer ignored Escape, let Back navigate rather than trap the user.
++  return leaving(top);
++}
++
++declare global {
++  interface Window {
++    __deeptutorBack?: () => Promise<boolean>;
++  }
++}
++
++export default function AndroidBackBridge() {
++  useEffect(() => {
++    window.__deeptutorBack = back;
++    return () => {
++      if (window.__deeptutorBack === back) delete window.__deeptutorBack;
++    };
++  }, []);
++  return null;
++}
+diff --git a/web/components/layout/AppShell.tsx b/web/components/layout/AppShell.tsx
+index 14f860f..a5eb04b 100644
+--- a/web/components/layout/AppShell.tsx
++++ b/web/components/layout/AppShell.tsx
+@@ -78,6 +78,57 @@ export default function AppShell({ sidebar, pageBar, children, homeHref = "/" }:
+     return () => window.removeEventListener("keydown", onKeyDown);
+   }, [drawerOpen]);
+ 
++  // The overlay drawer follows the platform gesture: a swipe in from the left
++  // edge opens it, a swipe back to the left closes it. Only where the drawer
++  // exists (below md). Touch events rather than pointer events: the browser
++  // cancels a pointer as soon as it treats the move as a pan, while touch
++  // events keep flowing for the whole gesture.
++  useEffect(() => {
++    if (!isMobile) return;
++    const EDGE = 24;
++    const DISTANCE = 56;
++    let start: { x: number; y: number; id: number; opening: boolean } | null = null;
++    const down = (event: TouchEvent) => {
++      if (event.touches.length !== 1) {
++        start = null;
++        return;
++      }
++      const touch = event.touches[0];
++      const opening = !drawerOpen && touch.clientX <= EDGE;
++      if (opening || drawerOpen)
++        start = { x: touch.clientX, y: touch.clientY, id: touch.identifier, opening };
++    };
++    const move = (event: TouchEvent) => {
++      if (!start) return;
++      const touch = Array.from(event.changedTouches).find((t) => t.identifier === start?.id);
++      if (!touch) return;
++      const dx = touch.clientX - start.x;
++      const dy = touch.clientY - start.y;
++      // A mostly vertical move is a scroll; let it go.
++      if (Math.abs(dy) > Math.abs(dx) * 1.2 && Math.abs(dy) > 12) {
++        start = null;
++        return;
++      }
++      if (start.opening ? dx > DISTANCE : dx < -DISTANCE) {
++        setDrawerOpen(start.opening);
++        start = null;
++      }
++    };
++    const end = () => {
++      start = null;
++    };
++    window.addEventListener("touchstart", down, { passive: true });
++    window.addEventListener("touchmove", move, { passive: true });
++    window.addEventListener("touchend", end, { passive: true });
++    window.addEventListener("touchcancel", end, { passive: true });
++    return () => {
++      window.removeEventListener("touchstart", down);
++      window.removeEventListener("touchmove", move);
++      window.removeEventListener("touchend", end);
++      window.removeEventListener("touchcancel", end);
++    };
++  }, [isMobile, drawerOpen]);
++
+   return (
+     <SidebarDrawerContext.Provider value={{ close }}>
+       {/* dvh, not vh: iOS Safari's 100vh includes the retracted address bar, so
+@@ -87,6 +138,7 @@ export default function AppShell({ sidebar, pageBar, children, homeHref = "/" }:
+           <div
+             onClick={close}
+             aria-hidden
++            data-android-back="close-drawer"
+             className="fixed inset-0 z-40 bg-black/40 md:hidden"
+           />
+         ) : null}
+diff --git a/web/components/partners/PartnerComposer.tsx b/web/components/partners/PartnerComposer.tsx
+index 3371875..2292a8d 100644
+--- a/web/components/partners/PartnerComposer.tsx
++++ b/web/components/partners/PartnerComposer.tsx
+@@ -568,12 +568,21 @@ export const PartnerComposer = memo(function PartnerComposer({
+           </Tooltip>
+           <div
+             className="relative flex items-center"
+-            onMouseEnter={() => setShowHelp(true)}
+-            onMouseLeave={() => setShowHelp(false)}
++            onPointerEnter={(event) => {
++              if (event.pointerType === "mouse") setShowHelp(true);
++            }}
++            onPointerLeave={(event) => {
++              if (event.pointerType === "mouse") setShowHelp(false);
++            }}
++            onBlur={(event) => {
++              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setShowHelp(false);
++            }}
+           >
+             <button
+               type="button"
+               aria-label={t("Tips")}
++              aria-expanded={showHelp}
++              onClick={() => setShowHelp((open) => !open)}
+               className="flex h-7 w-7 items-center justify-center rounded-full text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+             >
+               <Info className="h-4 w-4" strokeWidth={1.9} />
+diff --git a/web/components/reading/PdfDocumentView.tsx b/web/components/reading/PdfDocumentView.tsx
+index b719175..8eba2b3 100644
+--- a/web/components/reading/PdfDocumentView.tsx
++++ b/web/components/reading/PdfDocumentView.tsx
+@@ -30,6 +30,7 @@ import {
+   normaliseRects,
+ } from "@/lib/reading-selection";
+ import { PdfPage } from "./PdfPage";
++import { useTouchSelectionSettled } from "@/hooks/useTouchSelectionSettled";
+ 
+ /** Pages kept rendered on each side of the viewport. */
+ const RENDER_MARGIN = 1;
+@@ -480,6 +481,8 @@ export function PdfDocumentView({
+       anchor: { x: last.left + last.width / 2, y: last.top },
+     });
+   }, [onSelection]);
++  // Touch selections end without a mouseup; read them when the handles rest.
++  useTouchSelectionSettled(handlePointerUp);
+ 
+   // -- render --------------------------------------------------------------
+ 
+diff --git a/web/components/reading/TextUnitView.tsx b/web/components/reading/TextUnitView.tsx
+index a5b665d..6e7bfb8 100644
+--- a/web/components/reading/TextUnitView.tsx
++++ b/web/components/reading/TextUnitView.tsx
+@@ -49,6 +49,7 @@ import {
+ import { toRecogitoTextAnnotation } from "@/lib/reading-w3c-annotations";
+ import type { JumpRequest, SelectionPayload } from "./PdfDocumentView";
+ import { PreferenceButton, ReaderDisplayControls } from "./ReaderDisplayControls";
++import { useTouchSelectionSettled } from "@/hooks/useTouchSelectionSettled";
+ 
+ const COLOR_INK: Record<string, string> = {
+   yellow: "250 220 90",
+@@ -457,6 +458,8 @@ export function TextUnitView({
+         : { x: 0, y: 0 },
+     });
+   }, [locator, onSelection, text]);
++  // Touch selections end without a mouseup; read them when the handles rest.
++  useTouchSelectionSettled(handlePointerUp);
+ 
+   const canPrev = locator > 1;
+   const canNext = locator < unitCount;
+diff --git a/web/features/chat/components/ChatWorkspace.tsx b/web/features/chat/components/ChatWorkspace.tsx
+index b28abd0..b0c3947 100644
+--- a/web/features/chat/components/ChatWorkspace.tsx
++++ b/web/features/chat/components/ChatWorkspace.tsx
+@@ -11,6 +11,7 @@ import { watchingRoute } from "@/lib/learning-routes";
+ import { useChatWorkspaces } from "@/hooks/useChatWorkspaces";
+ import { useComposerResources } from "@/hooks/useComposerResources";
+ import { useActiveWorkspaceId } from "@/hooks/useActiveWorkspaceId";
++import { useTouchSelectionSettled } from "@/hooks/useTouchSelectionSettled";
+ import dynamic from "next/dynamic";
+ import {
+   type KeyboardEvent,
+@@ -1839,6 +1840,10 @@ export default function ChatWorkspace() {
+     };
+   }, [passageShown, handleMessagesSelection]);
+ 
++  // Touch selects with a long press and the system handles; no mouseup or
++  // keyup ever fires, so pick the selection up once the handles settle.
++  useTouchSelectionSettled(handleMessagesSelection);
++
+   // "Add to chat": the passage rides the next message as a quote.
+   const addSelectedPassageToChat = useCallback(() => {
+     const quote = selectedPassage ? quoteAttachment(selectedPassage.text) : null;
+diff --git a/web/features/co-writer/components/CoWriterWorkspace.tsx b/web/features/co-writer/components/CoWriterWorkspace.tsx
+index 0d71d86..0e9d8a2 100644
+--- a/web/features/co-writer/components/CoWriterWorkspace.tsx
++++ b/web/features/co-writer/components/CoWriterWorkspace.tsx
+@@ -79,6 +79,7 @@ import type { NotebookSavePayload } from "@/components/notebook/SaveToNotebookMo
+ import { CO_WRITER_SAMPLE_TEMPLATE } from "@/app/(workspace)/co-writer/sampleTemplate";
+ import ModelSelector from "@/components/chat/home/ModelSelector";
+ import { useLLMOptions } from "@/hooks/useLLMOptions";
++import { useTouchSelectionSettled } from "@/hooks/useTouchSelectionSettled";
+ import Tooltip from "@/shared/ui/Tooltip";
+ 
+ const MarkdownRenderer = dynamic(
+@@ -703,6 +704,8 @@ export default function CoWriterWorkspace({ docId, onBack }: CoWriterWorkspacePr
+     measureSelectionAnchor,
+     selectionPopoverPinned,
+   ]);
++  // Touch selections end without a mouseup; read them when the handles rest.
++  useTouchSelectionSettled(updateSelectionPopover);
+ 
+   const insertSnippet = useCallback(
+     (snippet: string) => {
+diff --git a/web/hooks/useTouchPrimary.ts b/web/hooks/useTouchPrimary.ts
+new file mode 100644
+index 0000000..e8345bb
+--- /dev/null
++++ b/web/hooks/useTouchPrimary.ts
+@@ -0,0 +1,38 @@
++"use client";
++
++import { useSyncExternalStore } from "react";
++
++/* Whether the primary input is a finger rather than a mouse.
++ *
++ * Width (``useDevice``) and input are independent: a landscape tablet is as
++ * wide as a laptop, and a laptop window can be phone-narrow. Touch-specific
++ * behaviour keys off ``(hover: none) and (pointer: coarse)`` — the primary
++ * pointer — so a touchscreen laptop that also has a trackpad keeps the mouse
++ * behaviour it was designed for.
++ */
++const TOUCH_QUERY = "(hover: none) and (pointer: coarse)";
++
++let query: MediaQueryList | null = null;
++
++function media(): MediaQueryList | null {
++  if (typeof window === "undefined" || !window.matchMedia) return null;
++  query ??= window.matchMedia(TOUCH_QUERY);
++  return query;
++}
++
++function subscribe(onChange: () => void): () => void {
++  const list = media();
++  if (!list) return () => {};
++  list.addEventListener("change", onChange);
++  return () => list.removeEventListener("change", onChange);
++}
++
++/** Non-hook read for event handlers that should not re-render on change. */
++export function isTouchPrimary(): boolean {
++  return media()?.matches ?? false;
++}
++
++export function useTouchPrimary(): boolean {
++  // The server cannot know; render the mouse variant first, as before.
++  return useSyncExternalStore(subscribe, isTouchPrimary, () => false);
++}
+diff --git a/web/hooks/useTouchSelectionSettled.ts b/web/hooks/useTouchSelectionSettled.ts
+new file mode 100644
+index 0000000..8cc5db6
+--- /dev/null
++++ b/web/hooks/useTouchSelectionSettled.ts
+@@ -0,0 +1,35 @@
++"use client";
++
++import { useEffect, useRef } from "react";
++
++import { isTouchPrimary } from "@/hooks/useTouchPrimary";
++
++/**
++ * Run ``onSettled`` when a touch text selection stops changing.
++ *
++ * Mouse selections end with ``mouseup``, which is where these views read the
++ * selection. Touch selections (long press, then the system drag handles) fire
++ * no mouseup at all, so on touch-primary devices this listens to
++ * ``selectionchange`` instead and calls back once the handles rest.
++ * Does nothing on mouse-primary devices; their existing handlers stay in charge.
++ */
++export function useTouchSelectionSettled(onSettled: () => void, delay = 350): void {
++  const callback = useRef(onSettled);
++  useEffect(() => {
++    callback.current = onSettled;
++  }, [onSettled]);
++
++  useEffect(() => {
++    if (!isTouchPrimary()) return;
++    let timer: ReturnType<typeof setTimeout> | undefined;
++    const onSelectionChange = () => {
++      clearTimeout(timer);
++      timer = setTimeout(() => callback.current(), delay);
++    };
++    document.addEventListener("selectionchange", onSelectionChange);
++    return () => {
++      clearTimeout(timer);
++      document.removeEventListener("selectionchange", onSelectionChange);
++    };
++  }, [delay]);
++}
+diff --git a/web/locales/de/app.json b/web/locales/de/app.json
+index 07a54e6..b3feff0 100644
+--- a/web/locales/de/app.json
++++ b/web/locales/de/app.json
+@@ -6406,5 +6406,6 @@
+   "Availability refreshed. This parser is still unavailable; check the installation and startup logs, then retry.": "Verfügbarkeit aktualisiert. Dieser Parser ist weiterhin nicht verfügbar; prüfe Installation und Startprotokolle und versuche es erneut.",
+   "language.portuguese": "Portugiesisch",
+   "language.japanese": "Japanisch",
+-  "language.turkish": "Türkçe"
++  "language.turkish": "Türkçe",
++  "Tap to complete": "Tippen zum Vervollständigen"
+ }
+diff --git a/web/locales/en/app.json b/web/locales/en/app.json
+index ed3beaa..930740d 100644
+--- a/web/locales/en/app.json
++++ b/web/locales/en/app.json
+@@ -6406,5 +6406,6 @@
+   "Reset learning text": "Reset learning text",
+   "language.portuguese": "Portuguese",
+   "language.japanese": "Japanese",
+-  "language.turkish": "Türkçe"
++  "language.turkish": "Türkçe",
++  "Tap to complete": "Tap to complete"
+ }
+diff --git a/web/locales/fr/app.json b/web/locales/fr/app.json
+index 38ae01d..2aa5102 100644
+--- a/web/locales/fr/app.json
++++ b/web/locales/fr/app.json
+@@ -7311,5 +7311,6 @@
+   "Availability refreshed. This parser is still unavailable; check the installation and startup logs, then retry.": "Disponibilité actualisée. Ce parseur reste indisponible ; vérifiez l’installation et les journaux de démarrage, puis réessayez.",
+   "language.portuguese": "Portugais",
+   "language.japanese": "Japonais",
+-  "language.turkish": "Türkçe"
++  "language.turkish": "Türkçe",
++  "Tap to complete": "Touchez pour valider"
+ }
+diff --git a/web/locales/ja/app.json b/web/locales/ja/app.json
+index 7e8a5a1..5542cae 100644
+--- a/web/locales/ja/app.json
++++ b/web/locales/ja/app.json
+@@ -6406,5 +6406,6 @@
+   "Learning text preview": "学習テキストのプレビュー",
+   "Reset learning text": "学習テキストをリセット",
+   "language.portuguese": "Português",
+-  "language.turkish": "Türkçe"
++  "language.turkish": "Türkçe",
++  "Tap to complete": "タップで補完"
+ }
+diff --git a/web/locales/pl/app.json b/web/locales/pl/app.json
+index 473717f..94efaae 100644
+--- a/web/locales/pl/app.json
++++ b/web/locales/pl/app.json
+@@ -6428,5 +6428,6 @@
+   "Availability refreshed. This parser is still unavailable; check the installation and startup logs, then retry.": "Dostępność odświeżona. Ten parser nadal jest niedostępny; sprawdź instalację i dzienniki uruchamiania, a następnie ponów próbę.",
+   "language.portuguese": "Portugalski",
+   "language.japanese": "Japoński",
+-  "language.turkish": "Türkçe"
++  "language.turkish": "Türkçe",
++  "Tap to complete": "Dotknij, aby uzupełnić"
+ }
+diff --git a/web/locales/pt/app.json b/web/locales/pt/app.json
+index d91c8c7..6972f7c 100644
+--- a/web/locales/pt/app.json
++++ b/web/locales/pt/app.json
+@@ -6424,5 +6424,6 @@
+   "Learning text preview": "Prévia do texto de aprendizado",
+   "Reset learning text": "Redefinir texto de aprendizado",
+   "language.japanese": "日本語",
+-  "language.turkish": "Türkçe"
++  "language.turkish": "Türkçe",
++  "Tap to complete": "Toque para completar"
+ }
+diff --git a/web/locales/tr/app.json b/web/locales/tr/app.json
+index 4251cc8..04ba83d 100644
+--- a/web/locales/tr/app.json
++++ b/web/locales/tr/app.json
+@@ -6406,5 +6406,6 @@
+   "Learning text preview": "Öğrenme metni önizlemesi",
+   "Reset learning text": "Öğrenme metnini sıfırla",
+   "language.portuguese": "Português",
+-  "language.japanese": "日本語"
++  "language.japanese": "日本語",
++  "Tap to complete": "Tamamlamak için dokunun"
+ }
+diff --git a/web/locales/uk/app.json b/web/locales/uk/app.json
+index 3860087..26e5c24 100644
+--- a/web/locales/uk/app.json
++++ b/web/locales/uk/app.json
+@@ -6428,5 +6428,6 @@
+   "Availability refreshed. This parser is still unavailable; check the installation and startup logs, then retry.": "Доступність оновлено. Цей парсер досі недоступний; перевірте встановлення та журнали запуску й повторіть спробу.",
+   "language.portuguese": "Португальська",
+   "language.japanese": "Японська",
+-  "language.turkish": "Türkçe"
++  "language.turkish": "Türkçe",
++  "Tap to complete": "Торкніться, щоб завершити"
+ }
+diff --git a/web/locales/vi/app.json b/web/locales/vi/app.json
+index ca0eb07..829a6ef 100644
+--- a/web/locales/vi/app.json
++++ b/web/locales/vi/app.json
+@@ -6406,5 +6406,6 @@
+   "Reset learning text": "Đặt lại văn bản học tập",
+   "language.portuguese": "Português",
+   "language.japanese": "日本語",
+-  "language.turkish": "Türkçe"
++  "language.turkish": "Türkçe",
++  "Tap to complete": "Chạm để hoàn thành"
+ }
+diff --git a/web/locales/zh/app.json b/web/locales/zh/app.json
+index e408b32..366545b 100644
+--- a/web/locales/zh/app.json
++++ b/web/locales/zh/app.json
+@@ -6406,5 +6406,6 @@
+   "Reset learning text": "重置学习文字",
+   "language.portuguese": "葡萄牙语",
+   "language.japanese": "日语",
+-  "language.turkish": "Türkçe"
++  "language.turkish": "Türkçe",
++  "Tap to complete": "轻触补全"
+ }
