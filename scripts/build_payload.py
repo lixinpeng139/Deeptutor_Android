@@ -242,7 +242,7 @@ def build(abi: str, out: Path) -> None:
             if len(parts) < 2:
                 return "opt/node"
             rest = parts[1]
-            if rest in ("bin", "bin/node", "LICENSE"):
+            if rest in ("bin", "bin/node", "bin/npm", "bin/npx", "bin/corepack", "LICENSE") or rest.startswith("lib/"):
                 return f"opt/node/{rest}"
             return None
 
